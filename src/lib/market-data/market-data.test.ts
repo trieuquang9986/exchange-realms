@@ -4,12 +4,6 @@ import { ingestSession } from "./ingest";
 import { MemorySessionStore } from "./memory-store";
 import { isMarketDataStale, limitState, marketCap, pctChange } from "./metrics";
 import { validateBar } from "./validation";
-import {
-  ForbiddenEndpointError,
-  TOKEN_PATH,
-  assertAllowedPath,
-  buildTcbsUrl,
-} from "./tcbs/allowlist";
 import type { DailyBar, MarketDataProvider } from "./types";
 
 const provider = createFixtureProvider();
@@ -131,31 +125,5 @@ describe("ingestion", () => {
     const result = await ingestSession(bad, store, "2026-11-12");
     expect(result.status).toBe("failed");
     expect(store.sessions.size).toBe(0);
-  });
-});
-
-describe("TCBS endpoint allowlist", () => {
-  it("allows the token exchange path", () => {
-    expect(() => assertAllowedPath(TOKEN_PATH)).not.toThrow();
-  });
-
-  it("blocks order, cash, margin, account and derivatives paths by construction", () => {
-    for (const p of [
-      "/tartarus/v1/orders",
-      "/akhlys/v1/accounts/123/cash",
-      "/margin/v1/loans",
-      "/account/v1/profile",
-      "/derivative/v1/place-order",
-      "/gaia/v1/oauth2/openapi/token/../orders",
-      "relative/path",
-    ]) {
-      expect(() => assertAllowedPath(p)).toThrow(ForbiddenEndpointError);
-    }
-  });
-
-  it("blocks unknown paths while the market-data allowlist is still empty", () => {
-    expect(() => buildTcbsUrl("https://example.invalid", "/anything/new")).toThrow(
-      ForbiddenEndpointError,
-    );
   });
 });

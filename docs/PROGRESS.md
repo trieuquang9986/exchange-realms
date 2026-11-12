@@ -19,7 +19,8 @@ Done, on fixtures:
 
 Blocked on the owner:
 
-- [ ] TCBS spike (plan Phase 1 task 2): needs the owner's API key and a network that can reach TCBS
+- [x] TCBS spike script written and rehearsed against a local mock (docs/TCBS_SPIKE.md)
+- [ ] TCBS spike run on the owner's machine, report reviewed (checkpoint C2)
 - [ ] Real adapter and recorded contract fixtures (after the spike)
 - [ ] Acceptance checks on 20 real HOSE tickers (after the spike)
 - [ ] Checkpoints C2 (spike findings) and C3 (end of Phase 1)

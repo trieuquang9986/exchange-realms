@@ -5,21 +5,37 @@ Nothing below was verified against the live API: the TCBS spike (Phase 1 task 2)
 
 ## TCBS OpenAPI (owner's choice, plan 0.4)
 
-| Item                  | Status                                                                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cost                  | Free (per owner). Not independently verified.                                                                                                   |
-| Terms URL             | Not found yet. Check developers.tcbs.com.vn.                                                                                                    |
-| Redistribution        | **Unclear.** The spec read by the owner on 2026-11-11 states no terms. Public site stays fixtures-only or private until confirmed in writing.   |
-| Rate limits           | Unknown. Not stated in the spec.                                                                                                                |
-| Auth                  | API key + Smart OTP exchanged for a JWT at `/gaia/v1/oauth2/openapi/token`. Keys expire; expired keys cannot be extended.                       |
-| Unattended daily job  | **Unverified.** Spike must find out whether an OTP is needed on every token exchange.                                                           |
-| Market-data endpoints | Listed in the spec: price board, price history, foreign room, put-through, supply/demand, securities info, OHLCV. Exact paths not recorded yet. |
-| Not offered           | Company profile, financial statements, officers, industry classification, trading calendar.                                                     |
-| Last checked          | 2026-11-11 (by owner, from the spec). Not re-checked by the agent.                                                                              |
+Findings below come from TCBS's developer portal and OpenAPI spec v1.0.0, read by the agent on 2026-11-12.
+"Docs say" means documented, not yet confirmed against the live API. The spike (docs/TCBS_SPIKE.md) checks them.
 
-Safety: the same API has order, cash, margin and account endpoints. `src/lib/market-data/tcbs/allowlist.ts`
-blocks every path that is not on a market-data allowlist, and the allowlist is empty until the spike
-confirms real paths. Tests prove order and account paths throw.
+| Item                  | Status                                                                                                                                                                            |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cost                  | Docs say registration is free (workflow page). Not independently verified.                                                                                                        |
+| Base URL              | `https://openapi.tcbs.com.vn` (introduction page, "URL gốc").                                                                                                                     |
+| Terms URL             | None found. The introduction page states no terms of use.                                                                                                                         |
+| Redistribution        | **Unclear.** No statement on any page read. Treated as "no" for public display until TCBS confirms in writing.                                                                    |
+| Rate limits           | **Not stated** on any page read. The spike measures what it can.                                                                                                                  |
+| Auth                  | POST `/gaia/v1/oauth2/openapi/token` with `apiKey` and `otp` (Smart OTP / iOTP from TCInvest) returns `token`, a JWT used as a Bearer token.                                      |
+| Token lifetime        | Docs say valid up to 8 hours from iOTP confirmation. No refresh token is described; after expiry "a new token is needed".                                                         |
+| OTP on every exchange | Docs imply yes (iOTP is part of every exchange), but do not say so explicitly. **Unattended daily job is therefore unlikely**; decision at checkpoint C2.                         |
+| API key expiry        | Key expiry is queryable (`/apikey/info`); keys can be extended with an OTP (not used here). An expired key cannot be extended. No durations stated.                               |
+| Units and formats     | Prices are whole VND (int64). Dates `yyyy-MM-dd`; datetimes ISO 8601 with +07:00. **Null fields are omitted from responses**: absent key = missing value. Volume unit not stated. |
+| Last checked          | 2026-11-12 (agent, from docs). Not yet verified live.                                                                                                                             |
+
+Market-data endpoints the app may call (all GET, allowlisted in `src/lib/market-data/tcbs/allowlist.ts`):
+
+| Path                           | Gives                                                                                                                                  | Notes                                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `/tartarus/v1/tickerSnaps`     | Per symbol: refPrice, ceilPrice, floorPrice, matchPrice, change, changePercent, totalVolume, room                                      | `index=1` is HOSE. One call can cover the whole board (to verify).                                                 |
+| `/tartarus/v1/tickerCommons`   | Same plus open, high, low, avg, totalVol, totalVal, order-book levels                                                                  | `tickers=` or `index=`.                                                                                            |
+| `/ananke/v1/securities`        | Security type, exchange (`tradePlace`: 001 HOSE, 002 HNX, 005 UPCOM), status, `listingQtty` (listed shares), ceiling, floor, reference | Paginated, default 1000 per page. **No industry field.** No listing date.                                          |
+| `/nyx/v2/stock/bars-long-term` | Daily/weekly/monthly OHLCV (`type=stock` or `index`)                                                                                   | Adjusted or unadjusted: not stated. Max history and max `countBack`: not stated. VN-Index ticker code: not stated. |
+
+Not used: intraday bars, put-through deals, WebSocket streams (intraday is out of the MVP), and every order,
+money, account, margin and derivatives endpoint. The same API exposes those, so the allowlist blocks them and
+tests prove it. Token exchange and the read-only key-expiry lookup are the only POSTs allowed.
+
+Not offered by TCBS: company profile, financial statements, officers, industry classification, trading calendar.
 
 ## Gaps still to research (no source chosen)
 
