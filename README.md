@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# The Exchange Realms
 
-## Getting Started
+A medieval-fantasy visualization of the Vietnamese stock market (HOSE only). Presentation layer over real
+financial data. Not a trading product and not investment advice. Project cost target: $0.
 
-First, run the development server:
+## Stack
+
+Next.js (App Router) · TypeScript · Tailwind CSS · Drizzle ORM · Neon Postgres (free) · Vitest · Vercel Hobby.
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local     # then fill in values yourself; never paste secrets into chat
+npm run dev                    # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Scripts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Script                                    | Purpose                                           |
+| ----------------------------------------- | ------------------------------------------------- |
+| `npm run dev`                             | Start the dev server                              |
+| `npm run build` / `npm start`             | Production build / serve                          |
+| `npm run typecheck`                       | TypeScript check, no emit                         |
+| `npm run lint`                            | ESLint                                            |
+| `npm test`                                | Vitest unit tests                                 |
+| `npm run format` / `npm run format:check` | Prettier                                          |
+| `npm run db:generate` / `db:migrate`      | Drizzle migrations (uses `DATABASE_URL_UNPOOLED`) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Environment variables
 
-## Learn More
+See `.env.example`. `.env.local` is git-ignored. Secrets are read only on the server through
+`src/lib/env.ts` and must never reach client code, logs or the repository.
 
-To learn more about Next.js, take a look at the following resources:
+## Project structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/app/          Next.js routes and layout
+src/lib/env.ts    Server-only env access (tested)
+src/lib/db/       Drizzle client and schema
+docs/             PRD, architecture, decisions, progress, user actions, test results
+drizzle/          Generated migrations
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Rules that apply to every change
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Cost stays $0. Never add paid services, trials or card entry.
+- Never invent financial data. Missing values display as "Chưa có dữ liệu".
+- Visual decisions belong to the owner (see `docs/DECISIONS.md`).
