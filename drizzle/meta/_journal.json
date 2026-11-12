@@ -8,6 +8,13 @@
       "when": 1794404769263,
       "tag": "0000_curious_moira_mactaggert",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794486921408,
+      "tag": "0001_phase1_market_data",
+      "breakpoints": true
     }
   ]
 }
