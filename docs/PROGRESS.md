@@ -20,7 +20,8 @@ Done, on fixtures:
 Blocked on the owner:
 
 - [x] TCBS spike script written and rehearsed against a local mock (docs/TCBS_SPIKE.md)
-- [ ] TCBS spike run on the owner's machine, report reviewed (checkpoint C2)
+- [x] TCBS spike run 1 (2026-11-12): auth, board, calendar and rate limits confirmed; securities info failed (missing Content-Type)
+- [ ] TCBS spike run 2: securities info, stock history depth, adjustment check, token permissions (checkpoint C2)
 - [ ] Real adapter and recorded contract fixtures (after the spike)
 - [ ] Acceptance checks on 20 real HOSE tickers (after the spike)
 - [ ] Checkpoints C2 (spike findings) and C3 (end of Phase 1)

@@ -26,8 +26,12 @@ export interface TcbsRequest {
  */
 export async function tcbsRequest(req: TcbsRequest): Promise<TcbsResponse> {
   const url = buildTcbsUrl(req.baseUrl ?? BASE_URL, req.method, req.path, req.query);
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (req.body !== undefined) headers["Content-Type"] = "application/json";
+  // TCBS documents Content-Type: application/json on every request, GET included. Its securities
+  // service answers HTTP 500 (code 579000) when the header is missing, so always send it.
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
   if (req.token) headers.Authorization = `Bearer ${req.token}`;
 
   const started = Date.now();

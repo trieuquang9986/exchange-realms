@@ -118,6 +118,21 @@ function jwtClaims(token: string): Json {
       issuedAt: iat ? new Date(iat * 1000).toISOString() : null,
       expiresAt: exp ? new Date(exp * 1000).toISOString() : null,
       lifetimeHours: exp && iat ? Math.round(((exp - iat) / 3600) * 100) / 100 : null,
+      // Permission names only (no identity claims such as email or account ids). Shows whether the
+      // token could do more than read market data. stepup_exp is a timestamp, not a secret.
+      permissions: Object.fromEntries(
+        ["scope", "scopes", "roles"]
+          .filter((k) => k in payload)
+          .map((k) => [k, payload[k]])
+          .filter(
+            ([, v]) =>
+              typeof v === "string" || (Array.isArray(v) && v.every((x) => typeof x === "string")),
+          ),
+      ),
+      stepUpExpiresAt:
+        typeof payload.stepup_exp === "number"
+          ? new Date(payload.stepup_exp * 1000).toISOString()
+          : null,
     };
   } catch {
     return { decodeError: true };
@@ -198,6 +213,7 @@ async function main() {
 
   // 3 and 4: whole-board snapshots for HOSE (index=1)
   let hoseSymbols: string[] = [];
+  let hoseRows: Json[] = [];
   const snapFields = [
     "refPrice",
     "ceilPrice",
@@ -214,6 +230,9 @@ async function main() {
     const res = await get("/tartarus/v1/tickerSnaps", { index: 1 });
     const rows = isObj(res.body) && Array.isArray(res.body.data) ? (res.body.data as Json[]) : [];
     hoseSymbols = rows.map((r) => String(r.symbol)).filter(Boolean);
+    hoseRows = rows;
+    const noVolume = rows.filter((r) => r.totalVolume === undefined);
+    const noChange = rows.filter((r) => r.change === undefined);
     return {
       res,
       ok: res.status < 300 && rows.length > 0,
@@ -223,6 +242,41 @@ async function main() {
         fieldsSeenOnRows: [...new Set(rows.flatMap((r) => Object.keys(r)))].sort(),
         coverage: coverage(rows, snapFields),
         firstSymbols: hoseSymbols.slice(0, 5),
+        // How to read rows with no trades or no change: are they "unchanged at the reference price"?
+        noVolumeRows: noVolume.length,
+        noVolumeRowsWithMatchPrice: noVolume.filter((r) => r.matchPrice !== undefined).length,
+        noVolumeRowsMatchPriceEqualsRef: noVolume.filter(
+          (r) => r.matchPrice !== undefined && r.matchPrice === r.refPrice,
+        ).length,
+        noChangeRows: noChange.length,
+        noChangeRowsMatchPriceEqualsRef: noChange.filter((r) => r.matchPrice === r.refPrice).length,
+        // Plan acceptance: our % change (against refPrice) vs the figure TCBS publishes.
+        changePercentCheck: (() => {
+          const both = rows.filter(
+            (r) =>
+              typeof r.changePercent === "number" &&
+              typeof r.matchPrice === "number" &&
+              typeof r.refPrice === "number" &&
+              r.refPrice > 0,
+          );
+          const diffs = both.map((r) =>
+            Math.abs(
+              ((r.matchPrice as number) / (r.refPrice as number) - 1) * 100 -
+                (r.changePercent as number),
+            ),
+          );
+          return {
+            compared: both.length,
+            maxAbsDiffPct: diffs.length ? Math.round(Math.max(...diffs) * 10000) / 10000 : null,
+            rowsDifferingOver0_01: diffs.filter((d) => d > 0.01).length,
+          };
+        })(),
+        closedAtCeiling: rows.filter(
+          (r) => r.matchPrice !== undefined && r.matchPrice === r.ceilPrice,
+        ).length,
+        closedAtFloor: rows.filter(
+          (r) => r.matchPrice !== undefined && r.matchPrice === r.floorPrice,
+        ).length,
         error: rows.length ? undefined : errorText(res.body),
       },
     };
@@ -258,7 +312,21 @@ async function main() {
   // 5: securities info, page 0 of everything
   let sampleStocks: string[] = [];
   await step("5. securities info (page 0, all fields)", async () => {
-    const res = await get("/ananke/v1/securities", { fields: "all" });
+    let res = await get("/ananke/v1/securities", { fields: "all" });
+    const attempts: Json[] = [{ query: "fields=all", status: res.status }];
+    if (res.status >= 300 && hoseSymbols[0]) {
+      // Diagnose: does a single-symbol filter work when the bulk query does not?
+      const one = await get("/ananke/v1/securities", {
+        fields: "all",
+        filter: `symbol=${hoseSymbols[0]}`,
+      });
+      attempts.push({
+        query: "fields=all&filter=symbol=<one symbol>",
+        status: one.status,
+        error: one.status >= 300 ? errorText(one.body) : undefined,
+      });
+      if (one.status < 300) res = one;
+    }
     const b = isObj(res.body) ? res.body : {};
     const items = Array.isArray(b.content) ? (b.content as Json[]) : [];
     const tally = (f: string) =>
@@ -277,6 +345,7 @@ async function main() {
       res,
       ok: res.status < 300 && items.length > 0,
       notes: {
+        attempts,
         wrapperKeys: Object.keys(b)
           .filter((k) => k !== "content")
           .sort(),
@@ -339,52 +408,81 @@ async function main() {
     };
   });
 
-  // 7: history depth, price units and adjustment heuristic
-  await step("7. History depth and adjustment check (3 sample stocks + index)", async () => {
-    const out: Json[] = [];
+  // 7: history depth (paged backwards because one call returns at most ~250 bars), units, adjustment
+  await step("7. History depth and adjustment check (10 liquid stocks + index)", async () => {
+    const byValue = [...hoseRows]
+      .sort((x, y) => Number(y.totalValue ?? 0) - Number(x.totalValue ?? 0))
+      .map((r) => String(r.symbol));
+    const stocks = [...new Set([...sampleStocks, ...byValue])].slice(0, 10);
     const targets = [
-      ...sampleStocks.map((s) => ({ ticker: s, type: "stock" })),
+      ...stocks.map((ticker) => ({ ticker, type: "stock" })),
       ...(indexTicker ? [{ ticker: indexTicker, type: "index" }] : []),
     ];
+    const out: Json[] = [];
+    let stopped = "";
     for (const t of targets) {
-      const res = await get("/nyx/v2/stock/bars-long-term", {
-        ...t,
-        resolution: "D",
-        to: now,
-        countBack: 5000,
-      });
-      const rows = isObj(res.body) && Array.isArray(res.body.data) ? (res.body.data as Json[]) : [];
-      const closes = rows.map((r) => Number(r.close));
+      if (stopped) break;
+      let bars: { date: string; close: number }[] = [];
+      let to = now;
+      const pageSizes: number[] = [];
+      for (let page = 0; page < 16; page++) {
+        const res = await get("/nyx/v2/stock/bars-long-term", {
+          ...t,
+          resolution: "D",
+          to,
+          countBack: 1000,
+        });
+        if (res.status === 429) {
+          stopped = `HTTP 429 while paging ${t.ticker}`;
+          break;
+        }
+        const rows =
+          isObj(res.body) && Array.isArray(res.body.data) ? (res.body.data as Json[]) : [];
+        pageSizes.push(rows.length);
+        if (!rows.length) break;
+        const chunk = rows.map((r) => ({
+          date: String(r.tradingDate).slice(0, 10),
+          close: Number(r.close),
+        }));
+        bars = [...chunk, ...bars.filter((x) => x.date > chunk[chunk.length - 1].date)];
+        const nextTo = Math.floor(Date.parse(`${chunk[0].date}T00:00:00Z`) / 1000) - 86400;
+        if (nextTo >= to) break;
+        to = nextTo;
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      const closes = bars.map((x) => x.close);
       const jumps = closes
         .map((c, i) =>
           i && closes[i - 1]
             ? {
-                date: String(rows[i].tradingDate).slice(0, 10),
+                date: bars[i].date,
                 pct: Math.round((c / closes[i - 1] - 1) * 100 * 100) / 100,
               }
             : null,
         )
         .filter((j): j is { date: string; pct: number } => j !== null)
-        .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+        .sort((x, y) => Math.abs(y.pct) - Math.abs(x.pct));
       out.push({
         ticker: t.ticker,
         type: t.type,
-        status: res.status,
-        ms: res.ms,
-        barsReturned: rows.length,
-        requested: 5000,
-        earliest: rows[0] ? String(rows[0].tradingDate).slice(0, 10) : null,
-        latest: rows.length ? String(rows[rows.length - 1].tradingDate).slice(0, 10) : null,
+        pagesFetched: pageSizes.length,
+        barsPerPage: pageSizes,
+        barsTotal: bars.length,
+        earliest: bars[0]?.date ?? null,
+        latest: bars.length ? bars[bars.length - 1].date : null,
         latestClose: closes.length ? closes[closes.length - 1] : null,
         daysOver7_5pct: jumps.filter((j) => Math.abs(j.pct) > 7.5).length,
         biggestMoves: jumps.slice(0, 5),
         interpretation:
           t.type === "stock"
-            ? "HOSE limit is +/-7%. Moves well above 7% on isolated dates suggest UNADJUSTED history around splits or dividends. None across a long history suggests adjusted prices (or no corporate actions). Heuristic only."
+            ? "HOSE limit is +/-7%. Isolated moves well above 7% suggest UNADJUSTED history around splits or dividends. None across a long history suggests adjusted prices (or no corporate actions). Heuristic only."
             : undefined,
       });
     }
-    return { ok: out.length > 0, notes: { samples: out } };
+    return {
+      ok: out.length > 0 && !stopped,
+      notes: { stoppedEarly: stopped || null, samples: out },
+    };
   });
 
   // 8: gentle rate-limit probe (20 light calls, 250 ms apart, stops on HTTP 429)

@@ -70,3 +70,12 @@ the TCInvest app or on the developer portal):
 | Step 2 fails                           | Wrong or expired OTP: run again with a fresh one                        |
 | Step 6 "neither guessed ticker worked" | Index ticker code unknown: the report says so; tell me, I will ask TCBS |
 | Everything times out                   | Network or VPN blocking `openapi.tcbs.com.vn`                           |
+
+## Run 2 (after the first live run)
+
+The first run confirmed login, the whole-board snapshot, VN-Index bars and rate-limit headers. Two things
+need a second run, which uses the same steps: securities info failed (fixed by sending a JSON Content-Type)
+and the stock history and adjustment check only ran on the index. Run 2 also pages history backwards
+(one call returns about 250 bars), tests 10 liquid stocks, compares TCBS's published % change with ours,
+and records the token's permission names so we can see whether it can do more than read market data.
+Same command, one fresh OTP. About two minutes.

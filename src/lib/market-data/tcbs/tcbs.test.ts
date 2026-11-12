@@ -94,3 +94,15 @@ describe("tcbsRequest", () => {
     expect(res.body).toBe("oops");
   });
 });
+
+describe("tcbsRequest headers", () => {
+  it("sends Content-Type application/json on GET too (TCBS securities service needs it)", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("{}", { status: 200 }),
+    ) as unknown as typeof fetch;
+    await tcbsRequest({ method: "GET", path: "/ananke/v1/securities", fetchImpl });
+    const [, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(init.headers["Content-Type"]).toBe("application/json");
+    expect(init.body).toBeUndefined();
+  });
+});
