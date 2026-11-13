@@ -1,6 +1,8 @@
 // Daily end-of-day ingest, run by the OWNER after the HOSE close:  npm run ingest
 //   npm run ingest -- --dry-run                 validate and print diagnostics, write nothing, no database needed
 //   npm run ingest -- --dry-run --force-early   same, but allowed before 15:10 (never combined with a real write)
+//   npm run ingest -- --wait                    keep checking every 5 minutes (up to 4 hours) until the board is
+//                                               finished and unchanged for 30 s, then write. Leave the window open.
 //   npm run ingest -- --date=2026-11-13         a specific session (TCBS's board only describes the latest one)
 // Reads TCBS_API_KEY (and DATABASE_URL_UNPOOLED for a real run) from the environment or .env.local, asks for
 // the Smart OTP with hidden input, and writes only after validation passes. Safe to run twice.
@@ -12,8 +14,13 @@ import * as schema from "../src/lib/db/schema.ts";
 import { API_KEY_INFO_PATH, TOKEN_PATH } from "../src/lib/market-data/tcbs/allowlist.ts";
 import { tcbsRequest } from "../src/lib/market-data/tcbs/client.ts";
 import { createTcbsProvider } from "../src/lib/market-data/tcbs/provider.ts";
-import { compareCloses, diagnoseBoard } from "../src/lib/market-data/tcbs/diagnostics.ts";
+import {
+  boardSignature,
+  compareCloses,
+  diagnoseBoard,
+} from "../src/lib/market-data/tcbs/diagnostics.ts";
 import { ingestSession } from "../src/lib/market-data/ingest.ts";
+import type { IngestResult } from "../src/lib/market-data/ingest.ts";
 import { createDbSessionStore } from "../src/lib/market-data/db-store.ts";
 import type { Db } from "../src/lib/market-data/db-store.ts";
 import { MemorySessionStore } from "../src/lib/market-data/memory-store.ts";
@@ -24,6 +31,15 @@ const flag = (name: string) => args.includes(`--${name}`);
 const dateArg = args.find((a) => a.startsWith("--date="))?.slice(7);
 const dryRun = flag("dry-run");
 const forceEarly = flag("force-early");
+const numArg = (name: string, fallback: number) => {
+  const raw = args.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
+  const n = Number(raw);
+  return raw !== undefined && Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+const waitMinutes = numArg("wait-minutes", flag("wait") ? 240 : 0);
+const pollMinutes = Math.max(1, numArg("poll-minutes", 5));
+const settleSeconds = numArg("settle-seconds", 30);
+const MIN_TRADED_SHARE = 0.5;
 
 const secrets: string[] = [];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -97,13 +113,60 @@ async function main() {
     );
   secrets.push(token);
 
-  const provider = createTcbsProvider({ token, baseUrl });
+  const provider = createTcbsProvider({ token, baseUrl, minTradedShare: MIN_TRADED_SHARE });
 
-  // Diagnostics on the raw board, before anything is stored.
-  const board = await provider.fetchBoard();
-  const diag = diagnoseBoard(board.rows);
+  // Look at the raw board first. A board is finished when it carries today's date and most rows have
+  // traded; it is settled when it is identical 30 seconds later. In wait mode keep looking until then.
+  const polls: Record<string, unknown>[] = [];
+  const stamp = () => {
+    const m = vietnamClock(new Date()).minutes;
+    return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  };
+  const look = async () => {
+    const b = await provider.fetchBoard();
+    const d = diagnoseBoard(b.rows);
+    polls.push({
+      vietnamTime: stamp(),
+      date: b.date,
+      rows: d.rows,
+      withVolume: d.withVolume,
+      missingReference: d.missingReference,
+    });
+    return {
+      b,
+      d,
+      ready: b.date === date && d.rows > 0 && d.withVolume / d.rows >= MIN_TRADED_SHARE,
+    };
+  };
+  const deadline = Date.now() + waitMinutes * 60_000;
+  let seen = await look();
+  let settled = false;
+  for (;;) {
+    if (seen.ready) {
+      await sleep(settleSeconds * 1000);
+      const again = await look();
+      settled = again.ready && boardSignature(again.b.rows) === boardSignature(seen.b.rows);
+      seen = again;
+      if (settled) break;
+      say(`${stamp()} the board is still changing.`);
+    }
+    if (Date.now() >= deadline) break;
+    say(
+      `${stamp()} not ready: ${seen.d.withVolume} of ${seen.d.rows} rows traded, board date ${seen.b.date ?? "unknown"}. Checking again in ${pollMinutes} min. Leave this window open.`,
+    );
+    await sleep(pollMinutes * 60_000);
+    seen = await look();
+  }
+  const board = seen.b;
+  const diag = seen.d;
   say(
     `\nBoard: trading date ${board.date ?? "unknown"}, ${diag.rows} rows, ${diag.withVolume} traded, ${diag.noVolume} without trades.`,
+  );
+  say(`  fields TCBS sent: ${diag.fieldsSeen.join(", ") || "none"}`);
+  say(
+    `  field types: ${Object.entries(diag.fieldTypes)
+      .map(([k, t]) => `${k}=${t}`)
+      .join(" ")}`,
   );
   say(
     `  rows without trades that still carry a matchPrice (ignored as close): ${diag.noVolumeWithMatchPrice}`,
@@ -126,10 +189,13 @@ async function main() {
     pool = new pg.Pool({ connectionString: dbUrl, max: 1 });
     dbStore = createDbSessionStore(drizzle(pool, { schema }) as unknown as Db);
     store = dbStore;
-    await dbStore.upsertSecurities(await provider.listSecurities());
   }
 
-  const result = await ingestSession(provider, store, date);
+  let result: IngestResult = { status: "not-ready", date };
+  if (settled) {
+    if (dbStore) await dbStore.upsertSecurities(await provider.listSecurities());
+    result = await ingestSession(provider, store, date);
+  }
   say(
     `\nResult: ${JSON.stringify(result)}${dryRun ? "  (dry run: validated only, nothing was written)" : ""}`,
   );
@@ -138,8 +204,10 @@ async function main() {
     generatedAt: now.toISOString(),
     date,
     dryRun,
+    settled,
     result,
     board: { date: board.date, ...diag },
+    polls,
   };
 
   if (result.status === "committed") {
@@ -173,7 +241,7 @@ async function main() {
     }
   } else if (result.status === "not-ready") {
     say(
-      "Not ready: before the open, a market holiday, or the board has no trades yet. Nothing was written.",
+      "Not ready: before the open, a market holiday, an empty board, or the board is still changing (see polls in the report). Nothing was written.",
     );
   } else {
     say(

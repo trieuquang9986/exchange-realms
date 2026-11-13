@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isAfterMarketClose, vietnamClock } from "./schedule";
-import { compareCloses, diagnoseBoard } from "./tcbs/diagnostics";
+import { boardSignature, compareCloses, diagnoseBoard } from "./tcbs/diagnostics";
 
 describe("Vietnam clock and the after-close guard", () => {
   it("converts UTC to Vietnam time (UTC+7)", () => {
@@ -86,5 +86,26 @@ describe("board diagnostics", () => {
       { ticker: "C", board: null, bars: 5 },
     ]);
     expect(r).toMatchObject({ compared: 2, mismatches: 1 });
+  });
+});
+
+describe("board field report and settle signature", () => {
+  it("lists the fields TCBS sent with their types, so numbers arriving as strings are visible", () => {
+    const d = diagnoseBoard([
+      { symbol: "A", refPrice: "10000", ceilPrice: 10700, totalVolume: null },
+      { symbol: "B", refPrice: 20000, room: "5" },
+    ]);
+    expect(d.fieldsSeen).toEqual(["ceilPrice", "refPrice", "room", "symbol"]);
+    expect(d.fieldTypes.refPrice).toBe("number|string");
+    expect(d.fieldTypes.ceilPrice).toBe("number");
+    expect(d.missingReference).toBe(1); // the string "10000" does not count as a usable price
+  });
+
+  it("signature is equal for an unchanged board and different once a trade arrives", () => {
+    const rows = [{ symbol: "A", totalVolume: 100 }, { symbol: "B" }];
+    expect(boardSignature(rows)).toBe(boardSignature([...rows]));
+    expect(boardSignature(rows)).not.toBe(
+      boardSignature([{ symbol: "A", totalVolume: 150 }, { symbol: "B" }]),
+    );
   });
 });

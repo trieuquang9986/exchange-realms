@@ -15,16 +15,19 @@ You run one command after the close. Your key and token never leave your machine
 ```bash
 npm run ingest -- --dry-run     # first time: validates and prints checks, writes nothing, no database needed
 npm run ingest                  # the real run: writes today's session to Neon
+npm run ingest -- --wait        # same, but keeps checking every 5 min (up to 4 h) until TCBS's board is
+                                # finished and unchanged for 30 s. Start it at 15:10 and leave it open.
+npm run ingest -- --dry-run --wait   # first time: also records WHEN the full data appears (see polls in the report)
 ```
 
 It asks for the Smart OTP (hidden), checks the board, validates every row, and writes only if all rows pass.
 Running it twice for the same day is safe: the second run replaces the same rows.
 
-| Exit code | Meaning                                                                      |
-| --------- | ---------------------------------------------------------------------------- |
-| 0         | Session stored (or, with `--dry-run`, would be stored)                       |
-| 3         | Not ready: before 15:10, before the open, a market holiday, or no trades yet |
-| 1         | Failed (bad OTP, TCBS error, validation failure). Nothing was written        |
+| Exit code | Meaning                                                                                             |
+| --------- | --------------------------------------------------------------------------------------------------- |
+| 0         | Session stored (or, with `--dry-run`, would be stored)                                              |
+| 3         | Not ready: before 15:10, before the open, a market holiday, or the board is empty or still changing |
+| 1         | Failed (bad OTP, TCBS error, validation failure). Nothing was written                               |
 
 Other options: `--date=2026-11-13` (the TCBS board only describes the latest session, so older dates give
 "not ready"), `--force-early` (only with `--dry-run`, to look at data before 15:10).
@@ -44,3 +47,7 @@ Attach `spike-output/ingest-<date>-dry.json` in chat. It holds counts only, no k
 - Shares outstanding are not stored yet (needs the securities sync), so market cap shows "Chua co du lieu".
 - The board is HOSE only. After the 28 Dec 2026 cutover it should grow to about 730 rows; the ingest does not assume 433.
 - The token has stock scopes, so treat it like a password: the scripts never print or store it.
+
+## Why `--wait`
+
+On 2026-11-13 at 15:27 the board had today's date but no reference prices and no volume on any of its 433 rows (the 12 Nov run at 20:03 had full data). The report now lists the fields TCBS sent and their types, and `--wait` records a Vietnam-time poll log, so the real publication time and any type problem become visible instead of guessed.

@@ -13,6 +13,9 @@ export interface BoardDiagnostics {
   closedAtCeiling: number;
   closedAtFloor: number;
   missingReference: number;
+  /** Every field TCBS sent on at least one row, and the JS type(s) seen, to catch string-vs-number surprises. */
+  fieldsSeen: string[];
+  fieldTypes: Record<string, string>;
   changePercent: { compared: number; maxAbsDiffPct: number | null; rowsDifferingOver0_01: number };
   volumeUnit: {
     compared: number;
@@ -65,6 +68,7 @@ export function diagnoseBoard(rows: Row[]): BoardDiagnostics {
     closedAtFloor: traded.filter((r) => num(r.matchPrice) !== null && r.matchPrice === r.floorPrice)
       .length,
     missingReference: rows.filter((r) => num(r.refPrice) === null).length,
+    ...describeFields(rows),
     changePercent: {
       compared: diffs.length,
       maxAbsDiffPct: diffs.length ? Math.round(Math.max(...diffs) * 10000) / 10000 : null,
@@ -89,4 +93,34 @@ export function compareCloses(
     mismatches: mismatches.length,
     examples: mismatches.slice(0, 5),
   };
+}
+
+function describeFields(rows: Row[]): { fieldsSeen: string[]; fieldTypes: Record<string, string> } {
+  const types = new Map<string, Set<string>>();
+  for (const r of rows) {
+    for (const [k, v] of Object.entries(r)) {
+      if (v === null || v === undefined) continue;
+      if (!types.has(k)) types.set(k, new Set());
+      types.get(k)!.add(typeof v);
+    }
+  }
+  const keys = [...types.keys()].sort();
+  return {
+    fieldsSeen: keys,
+    fieldTypes: Object.fromEntries(keys.map((k) => [k, [...types.get(k)!].sort().join("|")])),
+  };
+}
+
+/** Changes whenever a trade is added or a volume moves. Two equal signatures mean the board has settled. */
+export function boardSignature(rows: Row[]): string {
+  let withVolume = 0;
+  let total = 0;
+  for (const r of rows) {
+    const v = num(r.totalVolume);
+    if (v !== null) {
+      withVolume += 1;
+      total += v;
+    }
+  }
+  return `${rows.length}:${withVolume}:${total}`;
 }
