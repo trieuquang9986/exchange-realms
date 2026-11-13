@@ -1,5 +1,6 @@
-import { validateBars, type BarIssue } from "./validation";
-import type { DailyBar, MarketDataProvider, SessionDate } from "./types";
+import { validateBars } from "./validation.ts";
+import type { BarIssue } from "./validation.ts";
+import type { DailyBar, MarketDataProvider, SessionDate } from "./types.ts";
 
 /** Storage the ingest step writes to. commitSession must be atomic and replace any prior data for that date. */
 export interface SessionStore {

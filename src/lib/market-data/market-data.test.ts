@@ -56,6 +56,11 @@ describe("validation", () => {
     expect(validateBar({ ...fix1, close: null })).toEqual([]);
   });
 
+  it("rejects fractional VND prices (TCBS prices are whole VND)", async () => {
+    const [fix1] = await bars("2026-11-12");
+    expect(validateBar({ ...fix1, close: 21400.5 })).not.toEqual([]);
+  });
+
   it("rejects inconsistent prices", async () => {
     const [fix1] = await bars("2026-11-12");
     expect(validateBar({ ...fix1, high: 100, low: 200 })).not.toEqual([]);

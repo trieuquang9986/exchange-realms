@@ -20,8 +20,8 @@ export function validateBar(bar: DailyBar): BarIssue[] {
   // Missing must be null. A 0 or negative price means the source or adapter filled a gap.
   for (const f of PRICE_FIELDS) {
     const v = bar[f];
-    if (v !== null && !(Number.isFinite(v) && v > 0))
-      add(f, "price must be null or a positive number");
+    if (v !== null && !(Number.isInteger(v) && v > 0))
+      add(f, "price must be null or a positive whole number (VND)");
   }
   if (bar.volume !== null && !(Number.isFinite(bar.volume) && bar.volume >= 0)) {
     add("volume", "volume must be null or >= 0");

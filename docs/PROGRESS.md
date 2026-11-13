@@ -21,7 +21,12 @@ Blocked on the owner:
 
 - [x] TCBS spike script written and rehearsed against a local mock (docs/TCBS_SPIKE.md)
 - [x] TCBS spike run 1 (2026-11-12): auth, board, calendar and rate limits confirmed; securities info failed (missing Content-Type)
-- [ ] TCBS spike run 2: securities info, stock history depth, adjustment check, token permissions (checkpoint C2)
+- [x] TCBS spike run 2 (2026-11-13, pre-open): history depth and paging, rate-limit headers, token permissions confirmed; securities bulk query still fails (single-symbol works); adjustment not settled
+- [x] C2 decided: owner runs the ingest after each close with a daily OTP
+- [x] TCBS adapter (`tcbs/provider.ts`), Postgres store (`db-store.ts`, tested on PGlite), `npm run ingest` with `--dry-run`, after-close guard, diagnostics
+- [ ] First post-close dry run, then first real ingest (docs/DAILY_INGEST.md); answers: does matchPrice equal the close, does changePercent match ours, is volume in shares
+- [ ] Securities sync (shares outstanding, security type, listing date; about 433 paced single-symbol calls) and migration for the extra columns
+- [ ] 20-ticker market-cap check and a corporate-action date check
 - [ ] Real adapter and recorded contract fixtures (after the spike)
 - [ ] Acceptance checks on 20 real HOSE tickers (after the spike)
 - [ ] Checkpoints C2 (spike findings) and C3 (end of Phase 1)
