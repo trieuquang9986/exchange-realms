@@ -98,7 +98,7 @@ describe("board field report and settle signature", () => {
     expect(d.fieldsSeen).toEqual(["ceilPrice", "refPrice", "room", "symbol"]);
     expect(d.fieldTypes.refPrice).toBe("number|string");
     expect(d.fieldTypes.ceilPrice).toBe("number");
-    expect(d.missingReference).toBe(1); // the string "10000" does not count as a usable price
+    expect(d.missingReference).toBe(0); // numeric strings are real prices
   });
 
   it("signature is equal for an unchanged board and different once a trade arrives", () => {

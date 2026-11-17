@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTcbsProvider, parseSecurityItem, parseTradingDate } from "./provider";
+import { boardRowToBar, createTcbsProvider, parseSecurityItem, parseTradingDate } from "./provider";
 import { ingestSession } from "../ingest";
 import { MemorySessionStore } from "../memory-store";
 
@@ -219,5 +219,47 @@ describe("TCBS provider with the ingest step", () => {
       date: "2026-11-13",
       count: 4,
     });
+  });
+});
+
+describe("TCBS sends board numbers as strings", () => {
+  it("reads numeric strings, and treats empty, zero and junk as missing", () => {
+    const bar = boardRowToBar(
+      {
+        symbol: "AAA",
+        refPrice: "10000",
+        ceilPrice: "10700",
+        floorPrice: "9300",
+        open: "0",
+        high: "",
+        low: "N/A",
+        matchPrice: "10500",
+        totalVolume: "1200",
+      },
+      "2026-11-17",
+      "t",
+      null,
+    );
+    expect(bar).toMatchObject({
+      reference: 10000,
+      ceiling: 10700,
+      floor: 9300,
+      close: 10500,
+      volume: 1200,
+      open: null,
+      high: null,
+      low: null,
+    });
+  });
+
+  it("a zero volume string is no trade, so no close", () => {
+    const bar = boardRowToBar(
+      { symbol: "AAA", refPrice: "10000", matchPrice: "10000", totalVolume: "0" },
+      "2026-11-17",
+      "t",
+      null,
+    );
+    expect(bar.volume).toBeNull();
+    expect(bar.close).toBeNull();
   });
 });

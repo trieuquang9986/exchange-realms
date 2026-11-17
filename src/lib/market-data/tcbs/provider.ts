@@ -15,6 +15,7 @@ import type {
   SessionDate,
   TradingStatus,
 } from "../types.ts";
+import { num, positive } from "./numeric.ts";
 
 type Row = Record<string, unknown>;
 
@@ -44,8 +45,6 @@ export function parseTradingDate(text: unknown): SessionDate | null {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 }
 
-const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-
 /** One board row to a DailyBar. Absent or non-numeric fields become null, never 0. */
 export function boardRowToBar(
   row: Row,
@@ -53,18 +52,18 @@ export function boardRowToBar(
   fetchedAt: string,
   shares: number | null,
 ): DailyBar {
-  const volume = num(row.totalVolume);
+  const volume = positive(row.totalVolume);
   return {
     ticker: String(row.symbol),
     sessionDate: date,
-    open: num(row.open),
-    high: num(row.high),
-    low: num(row.low),
+    open: positive(row.open),
+    high: positive(row.high),
+    low: positive(row.low),
     // matchPrice is present even on rows that never traded, so it only counts when volume exists.
-    close: volume === null ? null : num(row.matchPrice),
-    reference: num(row.refPrice),
-    ceiling: num(row.ceilPrice),
-    floor: num(row.floorPrice),
+    close: volume === null ? null : positive(row.matchPrice),
+    reference: positive(row.refPrice),
+    ceiling: positive(row.ceilPrice),
+    floor: positive(row.floorPrice),
     volume,
     sharesOutstanding: shares,
     source: SOURCE,
@@ -154,7 +153,7 @@ export function createTcbsProvider(opts: TcbsProviderOptions): TcbsProvider {
       if (!rows.length) break;
       const chunk = rows.map((r) => ({
         date: String(r.tradingDate).slice(0, 10),
-        close: num(r.close),
+        close: positive(r.close),
       }));
       const seen = new Set(out.map((b) => b.date));
       out.unshift(...chunk.filter((b) => !seen.has(b.date)));
@@ -214,7 +213,7 @@ export function createTcbsProvider(opts: TcbsProviderOptions): TcbsProvider {
       const board = await fetchBoard();
       // The board only ever describes the latest session. Any other date is not available here.
       if (board.date !== date || board.rows.length === 0) return [];
-      const traded = board.rows.filter((r) => num(r.totalVolume) !== null).length;
+      const traded = board.rows.filter((r) => positive(r.totalVolume) !== null).length;
       // Pre-open boards carry the new date with no trades at all. Not a finished session.
       if (traded / board.rows.length < minTraded) return [];
       const fetchedAt = now().toISOString();

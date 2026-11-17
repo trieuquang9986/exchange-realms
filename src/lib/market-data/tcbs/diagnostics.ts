@@ -2,8 +2,9 @@
 // They answer questions the spikes could not: does matchPrice equal the close, does TCBS's
 // changePercent match ours, and is volume in shares?
 
+import { num, positive } from "./numeric.ts";
+
 type Row = Record<string, unknown>;
-const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 export interface BoardDiagnostics {
   rows: number;
@@ -25,14 +26,14 @@ export interface BoardDiagnostics {
 }
 
 export function diagnoseBoard(rows: Row[]): BoardDiagnostics {
-  const traded = rows.filter((r) => num(r.totalVolume) !== null);
-  const idle = rows.filter((r) => num(r.totalVolume) === null);
+  const traded = rows.filter((r) => positive(r.totalVolume) !== null);
+  const idle = rows.filter((r) => positive(r.totalVolume) === null);
 
   const diffs: number[] = [];
   for (const r of traded) {
     const pct = num(r.changePercent);
     const match = num(r.matchPrice);
-    const ref = num(r.refPrice);
+    const ref = positive(r.refPrice);
     if (pct !== null && match !== null && ref !== null && ref > 0) {
       diffs.push(Math.abs((match / ref - 1) * 100 - pct));
     }
@@ -63,11 +64,12 @@ export function diagnoseBoard(rows: Row[]): BoardDiagnostics {
     noVolume: idle.length,
     noVolumeWithMatchPrice: idle.filter((r) => num(r.matchPrice) !== null).length,
     closedAtCeiling: traded.filter(
-      (r) => num(r.matchPrice) !== null && r.matchPrice === r.ceilPrice,
+      (r) => num(r.matchPrice) !== null && num(r.matchPrice) === num(r.ceilPrice),
     ).length,
-    closedAtFloor: traded.filter((r) => num(r.matchPrice) !== null && r.matchPrice === r.floorPrice)
-      .length,
-    missingReference: rows.filter((r) => num(r.refPrice) === null).length,
+    closedAtFloor: traded.filter(
+      (r) => num(r.matchPrice) !== null && num(r.matchPrice) === num(r.floorPrice),
+    ).length,
+    missingReference: rows.filter((r) => positive(r.refPrice) === null).length,
     ...describeFields(rows),
     changePercent: {
       compared: diffs.length,
@@ -116,7 +118,7 @@ export function boardSignature(rows: Row[]): string {
   let withVolume = 0;
   let total = 0;
   for (const r of rows) {
-    const v = num(r.totalVolume);
+    const v = positive(r.totalVolume);
     if (v !== null) {
       withVolume += 1;
       total += v;
