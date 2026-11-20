@@ -35,6 +35,13 @@ export const securities = pgTable("securities", {
   companyName: text("company_name"),
   exchange: text("exchange"),
   status: text("status"),
+  /** Listed shares (TCBS listingQtty). NULL until the securities sync has run for the ticker. */
+  listedShares: bigint("listed_shares", { mode: "number" }),
+  /** TCBS secType: 001 common stock, 002 preferred, 003 convertible bond, 006 bond. */
+  secType: text("sec_type"),
+  listingDate: date("listing_date"),
+  /** When the securities sync last read this ticker. NULL = never synced. */
+  infoFetchedAt: timestamp("info_fetched_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

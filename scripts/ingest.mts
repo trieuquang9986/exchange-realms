@@ -113,7 +113,24 @@ async function main() {
     );
   secrets.push(token);
 
-  const provider = createTcbsProvider({ token, baseUrl, minTradedShare: MIN_TRADED_SHARE });
+  // Shares outstanding come from the securities sync (stored in Neon). A dry run has no database, so they stay null.
+  let sharesByTicker: Map<string, number> | undefined;
+  if (!dryRun) {
+    const p = new pg.Pool({ connectionString: dbUrl, max: 1 });
+    sharesByTicker = await createDbSessionStore(
+      drizzle(p, { schema }) as unknown as Db,
+    ).loadSharesByTicker();
+    await p.end();
+    say(
+      `Listed shares known for ${sharesByTicker.size} tickers (run npm run sync-securities if this is 0).`,
+    );
+  }
+  const provider = createTcbsProvider({
+    token,
+    baseUrl,
+    minTradedShare: MIN_TRADED_SHARE,
+    sharesByTicker,
+  });
 
   // Look at the raw board first. A board is finished when it carries today's date and most rows have
   // traded; it is settled when it is identical 30 seconds later. In wait mode keep looking until then.

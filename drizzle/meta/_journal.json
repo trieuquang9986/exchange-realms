@@ -15,6 +15,13 @@
       "when": 1794486921408,
       "tag": "0001_phase1_market_data",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795108820728,
+      "tag": "0002_phase1_securities_info",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "ingest": "node scripts/ingest.mts",
+    "sync-securities": "node scripts/sync-securities.mts",
     "spike": "node scripts/tcbs-spike.mts"
   },
   "dependencies": {

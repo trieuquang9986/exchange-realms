@@ -25,7 +25,8 @@ Blocked on the owner:
 - [x] C2 decided: owner runs the ingest after each close with a daily OTP
 - [x] TCBS adapter (`tcbs/provider.ts`), Postgres store (`db-store.ts`, tested on PGlite), `npm run ingest` with `--dry-run`, after-close guard, diagnostics
 - [ ] First post-close dry run, then first real ingest (docs/DAILY_INGEST.md); answers: does matchPrice equal the close, does changePercent match ours, is volume in shares
-- [ ] Securities sync (shares outstanding, security type, listing date; about 433 paced single-symbol calls) and migration for the extra columns
+- [x] Securities sync code (2026-11-20): migration 0002, `securities-sync.ts`, `npm run sync-securities`, ingest loads shares into bars; tested on PGlite. Owner still has to apply the migration and run it
+- [ ] Securities sync run against real TCBS/Neon (owner)
 - [ ] 20-ticker market-cap check and a corporate-action date check
 - [ ] Real adapter and recorded contract fixtures (after the spike)
 - [ ] Acceptance checks on 20 real HOSE tickers (after the spike)

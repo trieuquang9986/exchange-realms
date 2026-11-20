@@ -42,9 +42,24 @@ It prints three checks the earlier spikes could not make, because they ran befor
 
 Attach `spike-output/ingest-<date>-dry.json` in chat. It holds counts only, no key, OTP, token or database URL.
 
+## Securities sync (once, then weekly or after the 28 Dec cutover)
+
+Shares outstanding, security type and listing date come from one TCBS call per ticker (the bulk query fails), paced at 400 ms,
+so about 3 minutes for 433 tickers. It is resumable: tickers synced in the last 7 days are skipped.
+
+```bash
+npm run db:migrate                         # applies migration 0002 (4 new nullable columns on securities)
+npm run sync-securities -- --dry-run       # first 5 tickers, prints them, writes nothing, no database needed
+npm run sync-securities                    # the real run (asks for the Smart OTP)
+npm run sync-securities -- --all           # re-sync every ticker
+```
+
+Run it BEFORE the first real `npm run ingest`, so the first session already carries shares and market cap.
+Tickers the sync cannot read keep NULL shares (shown as "Chua co du lieu", never 0). Never overwrites a stored value with NULL.
+
 ## Known limits
 
-- Shares outstanding are not stored yet (needs the securities sync), so market cap shows "Chua co du lieu".
+- Market cap needs the securities sync; until it has run, shares and market cap are NULL.
 - The board is HOSE only. After the 28 Dec 2026 cutover it should grow to about 730 rows; the ingest does not assume 433.
 - The token has stock scopes, so treat it like a password: the scripts never print or store it.
 

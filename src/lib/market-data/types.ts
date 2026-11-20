@@ -16,6 +16,13 @@ export interface SecurityInfo {
   sharesOutstanding: number | null;
 }
 
+/** Security details from the per-ticker securities sync. null = the source gave no value. */
+export interface SecurityDetail extends SecurityInfo {
+  /** Provider's security type code (TCBS: 001 common stock, 002 preferred, 003 convertible bond, 006 bond). */
+  secType: string | null;
+  listingDate: SessionDate | null;
+}
+
 /** One end-of-day bar. Prices are VND, volume is shares. null = the source gave no value. */
 export interface DailyBar {
   ticker: string;

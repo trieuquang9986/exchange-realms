@@ -7,12 +7,18 @@ import { dailyPrices, ingestionErrors, securities, tradingSessions } from "../db
 import type * as schema from "../db/schema.ts";
 import type { SessionStore } from "./ingest.ts";
 import type { BarIssue } from "./validation.ts";
-import type { DailyBar, SecurityInfo, SessionDate } from "./types.ts";
+import type { DailyBar, SecurityDetail, SecurityInfo, SessionDate } from "./types.ts";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 export interface DbSessionStore extends SessionStore {
   upsertSecurities(infos: SecurityInfo[]): Promise<void>;
+  /** Stores per-ticker details from the securities sync. Unknown (null) values never overwrite stored ones. */
+  upsertSecurityDetails(details: SecurityDetail[], fetchedAt: Date): Promise<void>;
+  /** Listed shares by ticker, for tickers where the sync found a positive count. */
+  loadSharesByTicker(): Promise<Map<string, number>>;
+  /** Tickers never synced, or last synced before `olderThan`, so a sync can resume after an interruption. */
+  tickersNeedingSync(olderThan: Date): Promise<string[]>;
 }
 
 export function createDbSessionStore(db: Db): DbSessionStore {
@@ -41,6 +47,57 @@ export function createDbSessionStore(db: Db): DbSessionStore {
             },
           });
       }
+    },
+
+    async upsertSecurityDetails(details, fetchedAt) {
+      for (let i = 0; i < details.length; i += 200) {
+        await db
+          .insert(securities)
+          .values(
+            details.slice(i, i + 200).map((d) => ({
+              ticker: d.ticker,
+              companyName: d.companyName,
+              exchange: d.exchange,
+              status: d.status,
+              listedShares: d.sharesOutstanding,
+              secType: d.secType,
+              listingDate: d.listingDate,
+              infoFetchedAt: fetchedAt,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: securities.ticker,
+            set: {
+              companyName: sql`coalesce(excluded.company_name, ${securities.companyName})`,
+              exchange: sql`coalesce(excluded.exchange, ${securities.exchange})`,
+              status: sql`coalesce(excluded.status, ${securities.status})`,
+              listedShares: sql`coalesce(excluded.listed_shares, ${securities.listedShares})`,
+              secType: sql`coalesce(excluded.sec_type, ${securities.secType})`,
+              listingDate: sql`coalesce(excluded.listing_date, ${securities.listingDate})`,
+              infoFetchedAt: sql`excluded.info_fetched_at`,
+              updatedAt: sql`now()`,
+            },
+          });
+      }
+    },
+
+    async loadSharesByTicker() {
+      const rows = await db
+        .select({ ticker: securities.ticker, shares: securities.listedShares })
+        .from(securities)
+        .where(sql`${securities.listedShares} > 0`);
+      return new Map(rows.map((r) => [r.ticker, Number(r.shares)]));
+    },
+
+    async tickersNeedingSync(olderThan) {
+      const rows = await db
+        .select({ ticker: securities.ticker })
+        .from(securities)
+        .where(
+          sql`${securities.infoFetchedAt} is null or ${securities.infoFetchedAt} < ${olderThan.toISOString()}`,
+        )
+        .orderBy(securities.ticker);
+      return rows.map((r) => r.ticker);
     },
 
     async commitSession(date: SessionDate, bars: DailyBar[]) {

@@ -11,7 +11,7 @@ import type {
   DailyBar,
   Exchange,
   MarketDataProvider,
-  SecurityInfo,
+  SecurityDetail,
   SessionDate,
   TradingStatus,
 } from "../types.ts";
@@ -79,11 +79,7 @@ const STATUSES: Record<string, TradingStatus> = {
   "003": "suspended",
 };
 
-export interface ParsedSecurity extends SecurityInfo {
-  /** TCBS secType: 001 common stock, 002 preferred, 003 convertible bond, 006 bond. */
-  secType: string | null;
-  listingDate: SessionDate | null;
-}
+export type ParsedSecurity = SecurityDetail;
 
 /** Parses one item of /ananke/v1/securities. listingQtty is the listed share count. */
 export function parseSecurityItem(item: Row): ParsedSecurity {
